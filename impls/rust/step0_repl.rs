@@ -1,19 +1,17 @@
-use std::io::{self, BufRead, Write};
+use rustyline::Editor;
 
 fn main() {
+    let mut rl = Editor::<()>::new();
+
     loop {
-        print!("user> ");
-        if let Err(error) = io::stdout().flush() {
-            println!("{}", error);
-            return;
-        }
-
-        let mut line = String::new();
-        if let Ok(0) = io::stdin().lock().read_line(&mut line) {
-            return;
-        }
-
-        println!("{}", rep(&line));
+        let line = rl.readline("user> ");
+        match line {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str());
+                println!("{}", rep(&line));
+            }
+            Err(_) => break
+        };
     }
 }
 
