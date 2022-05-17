@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+pub type Function = fn(&Vec<MalType>) -> Result<MalType, String>;
+
+#[derive(Clone)]
 pub enum MalType {
     True,
     False,
@@ -17,4 +20,5 @@ pub enum MalType {
     Vector(Vec<MalType>),
     Deref(Box<MalType>),
     WithMeta(Box<MalType>, Box<MalType>),
+    Function(Function),
 }

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::types::MalType;
 
 pub fn pr_str(value: &MalType) -> String {
@@ -18,5 +20,12 @@ pub fn pr_str(value: &MalType) -> String {
         MalType::Vector(list) => format!("[{}]", list.iter().map(|value| pr_str(value)).collect::<Vec<String>>().join(" ")),
         MalType::Deref(value) => format!("(deref {})", pr_str(value)),
         MalType::WithMeta(first, second) => format!("(with-meta {} {})", pr_str(second), pr_str(first)),
+        MalType::Function(_) => format!("<fn>"),
+    }
+}
+
+impl Display for MalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", pr_str(self))
     }
 }
