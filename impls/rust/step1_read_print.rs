@@ -3,9 +3,9 @@ use reader::read_str;
 use rustyline::Editor;
 use types::MalType;
 
+mod printer;
 mod reader;
 mod types;
-mod printer;
 
 fn main() {
     let mut rl = Editor::<()>::new();
@@ -20,7 +20,7 @@ fn main() {
                     Err(message) => eprintln!("Error: {}", message),
                 }
             }
-            Err(_) => break
+            Err(_) => break,
         };
     }
 }
@@ -28,7 +28,7 @@ fn main() {
 fn rep(input: &str) -> Result<String, String> {
     match read(input) {
         Ok(value) => Ok(print(eval(&value))),
-        Err(message) => Err(message)
+        Err(message) => Err(message),
     }
 }
 
@@ -41,5 +41,5 @@ fn eval(input: &MalType) -> &MalType {
 }
 
 fn print(input: &MalType) -> String {
-    pr_str(input)
+    pr_str(input, true)
 }

@@ -1,34 +1,28 @@
-use std::{collections::HashMap, rc::Rc, cell::RefCell};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+mod core;
+mod env;
+mod printer;
+mod reader;
+mod types;
+
+use crate::core::ns;
 use env::Env;
 use printer::pr_str;
 use reader::read_str;
 use rustyline::Editor;
-use types::MalType;
-
-mod reader;
-mod types;
-mod printer;
-mod env;
-
-fn binary_op(args: &Vec<MalType>, op: fn(i64, i64) -> i64) -> Result<MalType, String> {
-    match (&args[0], &args[1]) {
-        (MalType::Number(a), MalType::Number(b)) => Ok(MalType::Number(op(*a, *b))),
-        (MalType::Number(_), b) => Err(format!("Unexpected second argument {}.", b)),
-        (a, MalType::Number(_)) => Err(format!("Unexpected first argument {}.", a)),
-        (a, b) => Err(format!("Unexpected arguments {} and {}.", a, b)),
-    }
-}
+use types::{Closure, MalType};
 
 fn main() {
     let mut rl = Editor::<()>::new();
 
     let mut env: Env = Env::new(None);
-    env.set("+".to_string(), MalType::Function(|args| binary_op(args, |a, b| a + b)));
-    env.set("-".to_string(), MalType::Function(|args| binary_op(args, |a, b| a - b)));
-    env.set("*".to_string(), MalType::Function(|args| binary_op(args, |a, b| a * b)));
-    env.set("/".to_string(), MalType::Function(|args| binary_op(args, |a, b| a / b)));
+    for (symbol, function) in ns() {
+        env.set(symbol.to_string(), MalType::Function(function));
+    }
     let env = Rc::new(RefCell::new(env));
+
+    let _ = rep("(def! not (fn* (a) (if a false true)))", env.clone());
 
     loop {
         let line = rl.readline("user> ");
@@ -40,7 +34,7 @@ fn main() {
                     Err(message) => eprintln!("Error: {}", message),
                 }
             }
-            Err(_) => break
+            Err(_) => break,
         };
     }
 }
@@ -48,7 +42,7 @@ fn main() {
 fn rep(input: &str, env: Rc<RefCell<Env>>) -> Result<String, String> {
     match read(input) {
         Ok(value) => eval(&value, env).and_then(|result| Ok(print(&result))),
-        Err(message) => Err(message)
+        Err(message) => Err(message),
     }
 }
 
@@ -80,20 +74,63 @@ fn eval(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
                     }
                     eval(&list[2], new_env)
                 }
+                MalType::Symbol(name) if name == "do" => {
+                    let list = MalType::List(list[1..].to_vec());
+                    let result = eval_ast(&list, env.clone())?;
+                    let result = result.as_list()?;
+                    Ok(result.last().unwrap().clone())
+                }
+                MalType::Symbol(name) if name == "if" => {
+                    let condition = eval(&list[1], env.clone())?;
+                    match condition {
+                        MalType::Nil | MalType::False => {
+                            if list.len() > 3 {
+                                eval(&list[3], env.clone())
+                            } else {
+                                Ok(MalType::Nil)
+                            }
+                        }
+                        _ => eval(&list[2], env.clone()),
+                    }
+                }
+                MalType::Symbol(name) if name == "fn*" => {
+                    let params = list[1].as_list()?;
+                    let body = &list[2];
+                    Ok(MalType::Closure(Box::new(Closure::new(
+                        params.clone(),
+                        body.clone(),
+                        env.clone(),
+                    ))))
+                }
                 _ => {
                     let value = eval_ast(ast, env.clone())?;
                     let list = value.as_list()?;
-                    list[0].as_function()?(&list[1..].to_vec())
+                    match &list[0] {
+                        MalType::Closure(closure) => {
+                            let new_env = Rc::new(RefCell::new(Env::from(
+                                Some(closure.env.clone()),
+                                &closure.params,
+                                &list[1..].to_vec(),
+                            )));
+                            eval(&closure.body, new_env)
+                        }
+                        MalType::Function(function) => function(&list[1..].to_vec()),
+                        _ => return Err(format!("Expected function but got {}", &list[0])),
+                    }
                 }
             }
         }
-        _ => eval_ast(&ast, env)
+        _ => eval_ast(&ast, env),
     }
 }
 
 fn eval_ast(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
     match ast {
-        MalType::Symbol(name) => env.borrow().get(name.as_str()).map(|value| value.clone()).ok_or(format!("'{}' not found.", name)),
+        MalType::Symbol(name) => env
+            .borrow()
+            .get(name.as_str())
+            .map(|value| value.clone())
+            .ok_or(format!("'{}' not found.", name)),
         MalType::List(list) => {
             let mut result = Vec::new();
             for value in list {

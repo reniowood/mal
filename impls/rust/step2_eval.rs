@@ -70,7 +70,7 @@ fn eval(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
 
             match &result[0] {
                 MalType::Function(f) => f(&result[1..].to_vec()),
-                value => Err(format!("Unexpected value {}.", pr_str(&value))),
+                value => Err(format!("Unexpected value {}.", pr_str(&value, true))),
             }
         }
         _ => eval_ast(&ast, repl_env)
@@ -115,5 +115,5 @@ fn eval_ast(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
 }
 
 fn print(ast: &MalType) -> String {
-    pr_str(ast)
+    pr_str(ast, true)
 }

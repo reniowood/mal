@@ -1,8 +1,27 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::printer::pr_str;
+use crate::{env::Env, printer::pr_str};
 
 pub type Function = fn(&Vec<MalType>) -> Result<MalType, String>;
+
+#[derive(Clone)]
+pub struct Closure {
+    pub params: Vec<MalType>,
+    pub body: MalType,
+    pub env: Rc<RefCell<Env>>,
+}
+
+impl Closure {
+    pub fn new(params: Vec<MalType>, body: MalType, env: Rc<RefCell<Env>>) -> Self {
+        Closure { params, body, env }
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum Hashable {
+    Keyword(String),
+    String(String),
+}
 
 #[derive(Clone)]
 pub enum MalType {
@@ -18,18 +37,19 @@ pub enum MalType {
     QuasiQuote(Box<MalType>),
     Unquote(Box<MalType>),
     SpliceUnquote(Box<MalType>),
-    Hashmap(HashMap<String, MalType>),
+    Hashmap(HashMap<Hashable, MalType>),
     Vector(Vec<MalType>),
     Deref(Box<MalType>),
     WithMeta(Box<MalType>, Box<MalType>),
     Function(Function),
+    Closure(Box<Closure>),
 }
 
 impl MalType {
     pub fn as_symbol(&self) -> Result<&String, String> {
         match self {
             MalType::Symbol(name) => Ok(name),
-            value => return Err(format!("Expected symbol but got {}.", pr_str(&value))),
+            value => return Err(format!("Expected symbol but got {}.", pr_str(&value, true))),
         }
     }
 
@@ -37,14 +57,41 @@ impl MalType {
         match self {
             MalType::List(list) => Ok(list),
             MalType::Vector(list) => Ok(list),
-            value => return Err(format!("Expected list but got {}.", pr_str(&value))),
+            value => return Err(format!("Expected list but got {}.", pr_str(&value, true))),
         }
     }
 
     pub fn as_function(&self) -> Result<&Function, String> {
         match self {
             MalType::Function(f) => Ok(f),
-            value => return Err(format!("Expected function but got {}.", pr_str(&value))),
+            value => {
+                return Err(format!(
+                    "Expected function but got {}.",
+                    pr_str(&value, true)
+                ))
+            }
         }
     }
 }
+
+impl PartialEq for MalType {
+    fn eq(&self, other: &MalType) -> bool {
+        match (self, other) {
+            (MalType::True, MalType::True) => true,
+            (MalType::False, MalType::False) => true,
+            (MalType::Nil, MalType::Nil) => true,
+            (MalType::Number(a), MalType::Number(b)) => a == b,
+            (MalType::Symbol(a), MalType::Symbol(b)) => a == b,
+            (MalType::Keyword(a), MalType::Keyword(b)) => a == b,
+            (MalType::String(a), MalType::String(b)) => a == b,
+            (MalType::List(a), MalType::List(b)) => a == b,
+            (MalType::Hashmap(a), MalType::Hashmap(b)) => a == b,
+            (MalType::Vector(a), MalType::Vector(b)) => a == b,
+            (MalType::List(a), MalType::Vector(b)) => a == b,
+            (MalType::Vector(a), MalType::List(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MalType {}

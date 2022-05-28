@@ -1,14 +1,25 @@
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 
-use crate::types::MalType;
+use crate::types::{Hashable, MalType};
 
 #[derive(Clone, Debug)]
 enum Token {
-    LeftParen, RightParen,
-    LeftBracket, RightBracket,
-    LeftBrace, RightBrace,
-    Number(i64), Symbol(String), String(String),
-    Quote, Backtick, Tilde, TildeAt, At, Caret,
+    LeftParen,
+    RightParen,
+    LeftBracket,
+    RightBracket,
+    LeftBrace,
+    RightBrace,
+    Number(i64),
+    Symbol(String),
+    Keyword(String),
+    String(String),
+    Quote,
+    Backtick,
+    Tilde,
+    TildeAt,
+    At,
+    Caret,
 }
 
 struct Reader {
@@ -30,8 +41,8 @@ impl Reader {
             Token::LeftParen => {
                 self.tokens.pop_front();
                 self.read_list()
-            },
-            _ => self.read_atom()
+            }
+            _ => self.read_atom(),
         }
     }
 
@@ -51,7 +62,7 @@ impl Reader {
 
             match self.read_form() {
                 Ok(result) => list.push(result),
-                Err(message) => return Err(message)
+                Err(message) => return Err(message),
             }
         }
 
@@ -63,16 +74,30 @@ impl Reader {
         match token {
             Token::Number(value) => Ok(MalType::Number(value)),
             Token::Symbol(name) => Ok(self.read_symbol(name)),
-            Token::String(value) => Ok(MalType::String(value)),
+            Token::String(value) => Ok(MalType::String(unescape_string(&value))),
+            Token::Keyword(name) => Ok(MalType::Keyword(name)),
             Token::LeftBrace => self.read_hashmap(),
             Token::LeftBracket => self.read_vector(),
-            Token::Quote => self.read_form().and_then(|value| Ok(MalType::Quote(Box::new(value)))),
-            Token::Backtick => self.read_form().and_then(|value| Ok(MalType::QuasiQuote(Box::new(value)))),
-            Token::Tilde => self.read_form().and_then(|value| Ok(MalType::Unquote(Box::new(value)))),
-            Token::TildeAt => self.read_form().and_then(|value| Ok(MalType::SpliceUnquote(Box::new(value)))),
-            Token::At => self.read_form().and_then(|value| Ok(MalType::Deref(Box::new(value)))),
-            Token::Caret => self.read_form().and_then(|first| self.read_form().and_then(|second| Ok(MalType::WithMeta(Box::new(first), Box::new(second))))),
-            _ => Err(format!("Unexpected token {:?}.", token))
+            Token::Quote => self
+                .read_form()
+                .and_then(|value| Ok(MalType::Quote(Box::new(value)))),
+            Token::Backtick => self
+                .read_form()
+                .and_then(|value| Ok(MalType::QuasiQuote(Box::new(value)))),
+            Token::Tilde => self
+                .read_form()
+                .and_then(|value| Ok(MalType::Unquote(Box::new(value)))),
+            Token::TildeAt => self
+                .read_form()
+                .and_then(|value| Ok(MalType::SpliceUnquote(Box::new(value)))),
+            Token::At => self
+                .read_form()
+                .and_then(|value| Ok(MalType::Deref(Box::new(value)))),
+            Token::Caret => self.read_form().and_then(|first| {
+                self.read_form()
+                    .and_then(|second| Ok(MalType::WithMeta(Box::new(first), Box::new(second))))
+            }),
+            _ => Err(format!("Unexpected token {:?}.", token)),
         }
     }
 
@@ -81,7 +106,6 @@ impl Reader {
             "true" => MalType::True,
             "false" => MalType::False,
             "nil" => MalType::Nil,
-            x if x.starts_with(":") => MalType::Keyword(name),
             _ => MalType::Symbol(name),
         }
     }
@@ -101,21 +125,19 @@ impl Reader {
             }
 
             let key = match self.read_form() {
-                Ok(MalType::String(value)) => value,
-                Ok(MalType::Keyword(name)) => name,
+                Ok(MalType::String(value)) => Hashable::String(value),
+                Ok(MalType::Keyword(name)) => Hashable::Keyword(name),
                 Ok(_) => return Err(format!("Unexpected token {:?}", token)),
                 Err(message) => return Err(message),
             };
-            
             match self.read_form() {
                 Ok(result) => hashmap.insert(key, result),
-                Err(message) => return Err(message)
+                Err(message) => return Err(message),
             };
         }
 
         Err("Unexpected EOF.".to_string())
     }
- 
     fn read_vector(&mut self) -> Result<MalType, String> {
         let mut list = Vec::new();
 
@@ -132,7 +154,7 @@ impl Reader {
 
             match self.read_form() {
                 Ok(result) => list.push(result),
-                Err(message) => return Err(message)
+                Err(message) => return Err(message),
             }
         }
 
@@ -147,7 +169,7 @@ pub fn read_str(string: &str) -> Result<MalType, String> {
             let mut reader = Reader::new(tokens);
             reader.read_form()
         }
-        Err(message) => Err(message)
+        Err(message) => Err(message),
     }
 }
 
@@ -168,25 +190,26 @@ fn tokenize(s: &str) -> Result<VecDeque<Token>, String> {
             '}' => Token::RightBrace,
             '\'' => Token::Quote,
             '`' => Token::Backtick,
-            '~' => if let Some('@') = chars.front() {
-                chars.pop_front();
-                Token::TildeAt
-            } else {
-                Token::Tilde
+            '~' => {
+                if let Some('@') = chars.front() {
+                    chars.pop_front();
+                    Token::TildeAt
+                } else {
+                    Token::Tilde
+                }
             }
             '@' => Token::At,
             '^' => Token::Caret,
-            '\"' => match string(c, &mut chars) {
+            '\"' => match string(&mut chars) {
                 Ok(token) => token,
                 Err(message) => return Err(message),
             },
             ';' => break,
-            '-' => {
-                match chars.front() {
-                    Some(c) if c.is_numeric() => number(true, chars.pop_front().unwrap(), &mut chars),
-                    _ => symbol(c, &mut chars),
-                }
-            }
+            '-' => match chars.front() {
+                Some(c) if c.is_numeric() => number(true, chars.pop_front().unwrap(), &mut chars),
+                _ => symbol(c, &mut chars),
+            },
+            ':' => keyword(&mut chars),
             c if c.is_numeric() => number(false, c, &mut chars),
             c => symbol(c, &mut chars),
         };
@@ -195,9 +218,8 @@ fn tokenize(s: &str) -> Result<VecDeque<Token>, String> {
     Ok(tokens)
 }
 
-fn string(c: char, chars: &mut VecDeque<char>) -> Result<Token, String> {
+fn string(chars: &mut VecDeque<char>) -> Result<Token, String> {
     let mut string = Vec::new();
-    string.push(c);
     while chars.front().is_some() && *chars.front().unwrap() != '\"' {
         let c = chars.pop_front().unwrap();
         string.push(c);
@@ -212,7 +234,6 @@ fn string(c: char, chars: &mut VecDeque<char>) -> Result<Token, String> {
     }
 
     chars.pop_front();
-    string.push('\"');
     Ok(Token::String(string.iter().collect()))
 }
 
@@ -247,6 +268,38 @@ fn symbol(c: char, chars: &mut VecDeque<char>) -> Token {
     Token::Symbol(name.iter().collect())
 }
 
+fn keyword(chars: &mut VecDeque<char>) -> Token {
+    let mut name = Vec::new();
+    while let Some(c) = chars.front() {
+        if c.is_whitespace() || is_special_char(*c) {
+            break;
+        }
+
+        name.push(*c);
+        chars.pop_front();
+    }
+
+    Token::Keyword(name.iter().collect())
+}
+
 fn is_special_char(c: char) -> bool {
     "[]{}()'`~^@".contains(c)
+}
+
+fn unescape_string(value: &str) -> String {
+    let mut result = Vec::new();
+    let mut chars = value.chars();
+    let mut is_escaped = false;
+    while let Some(c) = chars.next() {
+        if c == '\\' && !is_escaped {
+            is_escaped = true;
+        } else if is_escaped && c == 'n' {
+            result.push('\n');
+            is_escaped = false;
+        } else {
+            result.push(c);
+            is_escaped = false;
+        }
+    }
+    result.iter().collect()
 }
