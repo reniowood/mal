@@ -2,6 +2,7 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::types::MalType;
 
+#[derive(Debug)]
 pub struct Env {
     pub outer: Option<Rc<RefCell<Env>>>,
     data: HashMap<String, MalType>,

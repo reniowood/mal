@@ -122,6 +122,35 @@ pub fn ns() -> HashMap<&'static str, Function> {
 
         result
     });
+    ns.insert("cons", |args| {
+        let head = &args[0];
+        let tail = match &args[1] {
+            MalType::List(list) | MalType::Vector(list) => list,
+            _ => return Err(format!("Expected list or vector, but got {}", &args[1])),
+        };
+
+        let mut list = Vec::new();
+        list.push(head.clone());
+        list.extend(tail.clone());
+
+        Ok(MalType::List(list))
+    });
+    ns.insert("concat", |args| {
+        let mut result = Vec::new();
+        for arg in args {
+            match arg {
+                MalType::List(list) | MalType::Vector(list) => result.extend(list.clone()),
+                _ => return Err(format!("Expected list or vector, but got {}", arg)),
+            };
+        }
+
+        Ok(MalType::List(result))
+    });
+    ns.insert("vec", |args| match &args[0] {
+        MalType::List(list) => Ok(MalType::Vector(list.clone())),
+        MalType::Vector(_) => Ok(args[0].clone()),
+        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+    });
     ns
 }
 

@@ -80,16 +80,19 @@ impl Reader {
             Token::LeftBracket => self.read_vector(),
             Token::Quote => self
                 .read_form()
-                .and_then(|value| Ok(MalType::Quote(Box::new(value)))),
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("quote"), value]))),
             Token::Backtick => self
                 .read_form()
-                .and_then(|value| Ok(MalType::QuasiQuote(Box::new(value)))),
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("quasiquote"), value]))),
             Token::Tilde => self
                 .read_form()
-                .and_then(|value| Ok(MalType::Unquote(Box::new(value)))),
-            Token::TildeAt => self
-                .read_form()
-                .and_then(|value| Ok(MalType::SpliceUnquote(Box::new(value)))),
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("unquote"), value]))),
+            Token::TildeAt => self.read_form().and_then(|value| {
+                Ok(MalType::List(vec![
+                    MalType::symbol("splice-unquote"),
+                    value,
+                ]))
+            }),
             Token::At => match self.tokens.pop_front() {
                 Some(Token::Symbol(name)) => Ok(MalType::Deref(Box::new(self.read_symbol(name)))),
                 next => Err(format!("Unexpected next token {:?}.", next)),

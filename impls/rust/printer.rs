@@ -18,12 +18,6 @@ pub fn pr_str(value: &MalType, print_readably: bool) -> String {
                 .collect::<Vec<String>>()
                 .join(" ")
         ),
-        MalType::Quote(value) => format!("(quote {})", pr_str(value, print_readably)),
-        MalType::QuasiQuote(value) => format!("(quasiquote {})", pr_str(value, print_readably)),
-        MalType::Unquote(value) => format!("(unquote {})", pr_str(value, print_readably)),
-        MalType::SpliceUnquote(value) => {
-            format!("(splice-unquote {})", pr_str(value, print_readably))
-        }
         MalType::Hashmap(value) => format!(
             "{{{}}}",
             value

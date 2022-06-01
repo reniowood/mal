@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use crate::{env::Env, printer::pr_str};
 
@@ -34,7 +34,17 @@ impl Closure {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+impl Debug for Closure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Closure")
+            .field("params", &self.params)
+            .field("body", &self.body)
+            .field("env", &self.env)
+            .finish()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Hashable {
     Keyword(String),
     String(String),
@@ -50,10 +60,6 @@ pub enum MalType {
     Keyword(String),
     String(String),
     List(Vec<MalType>),
-    Quote(Box<MalType>),
-    QuasiQuote(Box<MalType>),
-    Unquote(Box<MalType>),
-    SpliceUnquote(Box<MalType>),
     Hashmap(HashMap<Hashable, MalType>),
     Vector(Vec<MalType>),
     Deref(Box<MalType>),
@@ -97,6 +103,10 @@ impl MalType {
             }
         }
     }
+
+    pub fn symbol(name: &str) -> Self {
+        MalType::Symbol(name.to_string())
+    }
 }
 
 impl PartialEq for MalType {
@@ -120,3 +130,27 @@ impl PartialEq for MalType {
 }
 
 impl Eq for MalType {}
+
+impl Debug for MalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::True => write!(f, "True"),
+            Self::False => write!(f, "False"),
+            Self::Nil => write!(f, "Nil"),
+            Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
+            Self::Symbol(arg0) => f.debug_tuple("Symbol").field(arg0).finish(),
+            Self::Keyword(arg0) => f.debug_tuple("Keyword").field(arg0).finish(),
+            Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
+            Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
+            Self::Hashmap(arg0) => f.debug_tuple("Hashmap").field(arg0).finish(),
+            Self::Vector(arg0) => f.debug_tuple("Vector").field(arg0).finish(),
+            Self::Deref(arg0) => f.debug_tuple("Deref").field(arg0).finish(),
+            Self::WithMeta(arg0, arg1) => {
+                f.debug_tuple("WithMeta").field(arg0).field(arg1).finish()
+            }
+            Self::Function(_) => f.debug_tuple("Function").finish(),
+            Self::Closure(_) => f.debug_tuple("Closure").finish(),
+            Self::Atom(arg0) => f.debug_tuple("Atom").field(arg0).finish(),
+        }
+    }
+}
