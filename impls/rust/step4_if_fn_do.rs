@@ -100,6 +100,12 @@ fn eval(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
                         params.clone(),
                         body.clone(),
                         env.clone(),
+                        |env, params, args, body| {
+                            eval(
+                                body,
+                                Rc::new(RefCell::new(Env::from(Some(env.clone()), &params, &args))),
+                            )
+                        },
                     ))))
                 }
                 _ => {

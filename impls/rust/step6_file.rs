@@ -14,15 +14,56 @@ use rustyline::Editor;
 use types::{Closure, MalType};
 
 fn main() {
-    let mut rl = Editor::<()>::new();
+    let env = create_env();
+    let args: Vec<String> = std::env::args().collect();
 
+    load_utils(env.clone(), &args);
+
+    if args.len() > 1 {
+        run_file(&env, &args[1]);
+    } else {
+        repl(&env);
+    }
+}
+
+fn create_env() -> Rc<RefCell<Env>> {
     let mut env: Env = Env::new(None);
     for (symbol, function) in ns() {
         env.set(symbol.to_string(), MalType::Function(function));
     }
-    let env = Rc::new(RefCell::new(env));
+    Rc::new(RefCell::new(env))
+}
 
+fn load_utils(env: Rc<RefCell<Env>>, args: &Vec<String>) {
+    env.borrow_mut().set(
+        "*ARGV*".to_string(),
+        if args.len() < 3 {
+            MalType::List(Vec::new())
+        } else {
+            MalType::List(
+                args[2..]
+                    .iter()
+                    .map(|v| MalType::String(v.to_string()))
+                    .collect(),
+            )
+        },
+    );
     let _ = rep("(def! not (fn* (a) (if a false true)))", env.clone());
+    let _ = rep(
+        r#"(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))"#,
+        env.clone(),
+    );
+}
+
+fn run_file(env: &Rc<RefCell<Env>>, filename: &str) {
+    let load_file = format!("(load-file \"{}\")", filename);
+    if let Err(message) = rep(&load_file, env.clone()) {
+        eprintln!("Error: {}", message);
+    }
+}
+
+fn repl(env: &Rc<RefCell<Env>>) {
+    let mut rl = Editor::<()>::new();
 
     loop {
         let line = rl.readline("user> ");
@@ -79,11 +120,10 @@ fn eval(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
                         ast = list[2].clone();
                     }
                     MalType::Symbol(name) if name == "do" => {
-                        let last_index = list.len() - 1;
-                        let list = MalType::List(list[1..last_index].to_vec());
+                        let list = MalType::List(list[1..].to_vec());
                         let result = eval_ast(&list, env.clone())?;
                         let result = result.as_list()?;
-                        ast = result[last_index].clone();
+                        ast = result[result.len() - 1].clone();
                     }
                     MalType::Symbol(name) if name == "if" => {
                         let condition = eval(&list[1], env.clone())?;
@@ -116,6 +156,12 @@ fn eval(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
                                 )
                             },
                         ))));
+                    }
+                    MalType::Symbol(name) if name == "eval" => {
+                        ast = eval(&list[1], env.clone())?;
+                        if let Some(outer) = &env.clone().borrow().outer {
+                            env = outer.clone();
+                        }
                     }
                     _ => {
                         let value = eval_ast(&ast, env.clone())?;
@@ -167,6 +213,13 @@ fn eval_ast(ast: &MalType, env: Rc<RefCell<Env>>) -> Result<MalType, String> {
                 result.insert(key.clone(), eval(value, env.clone())?);
             }
             Ok(MalType::Hashmap(result))
+        }
+        MalType::Deref(name) => {
+            let list = vec![
+                eval_ast(&MalType::Symbol("deref".to_string()), env.clone())?,
+                name.as_ref().clone(),
+            ];
+            eval(&MalType::List(list), env.clone())
         }
         _ => Ok(ast.clone()),
     }

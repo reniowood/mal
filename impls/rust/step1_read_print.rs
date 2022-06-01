@@ -3,6 +3,7 @@ use reader::read_str;
 use rustyline::Editor;
 use types::MalType;
 
+mod env;
 mod printer;
 mod reader;
 mod types;

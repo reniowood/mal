@@ -90,9 +90,10 @@ impl Reader {
             Token::TildeAt => self
                 .read_form()
                 .and_then(|value| Ok(MalType::SpliceUnquote(Box::new(value)))),
-            Token::At => self
-                .read_form()
-                .and_then(|value| Ok(MalType::Deref(Box::new(value)))),
+            Token::At => match self.tokens.pop_front() {
+                Some(Token::Symbol(name)) => Ok(MalType::Deref(Box::new(self.read_symbol(name)))),
+                next => Err(format!("Unexpected next token {:?}.", next)),
+            },
             Token::Caret => self.read_form().and_then(|first| {
                 self.read_form()
                     .and_then(|second| Ok(MalType::WithMeta(Box::new(first), Box::new(second))))
@@ -176,8 +177,23 @@ pub fn read_str(string: &str) -> Result<MalType, String> {
 fn tokenize(s: &str) -> Result<VecDeque<Token>, String> {
     let mut chars: VecDeque<char> = s.chars().collect();
     let mut tokens = VecDeque::new();
+    let mut is_comment = false;
     while let Some(c) = chars.pop_front() {
+        if c == '\n' {
+            is_comment = false;
+            continue;
+        }
+
         if c.is_whitespace() || c == ',' {
+            continue;
+        }
+
+        if is_comment {
+            continue;
+        }
+
+        if c == ';' {
+            is_comment = true;
             continue;
         }
 
@@ -204,7 +220,6 @@ fn tokenize(s: &str) -> Result<VecDeque<Token>, String> {
                 Ok(token) => token,
                 Err(message) => return Err(message),
             },
-            ';' => break,
             '-' => match chars.front() {
                 Some(c) if c.is_numeric() => number(true, chars.pop_front().unwrap(), &mut chars),
                 _ => symbol(c, &mut chars),

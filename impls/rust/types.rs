@@ -3,17 +3,34 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::{env::Env, printer::pr_str};
 
 pub type Function = fn(&Vec<MalType>) -> Result<MalType, String>;
+pub type ClosureFunction =
+    fn(Rc<RefCell<Env>>, &Vec<MalType>, &Vec<MalType>, &MalType) -> Result<MalType, String>;
 
 #[derive(Clone)]
 pub struct Closure {
     pub params: Vec<MalType>,
     pub body: MalType,
     pub env: Rc<RefCell<Env>>,
+    pub f: ClosureFunction,
 }
 
 impl Closure {
-    pub fn new(params: Vec<MalType>, body: MalType, env: Rc<RefCell<Env>>) -> Self {
-        Closure { params, body, env }
+    pub fn new(
+        params: Vec<MalType>,
+        body: MalType,
+        env: Rc<RefCell<Env>>,
+        f: ClosureFunction,
+    ) -> Self {
+        Closure {
+            params,
+            body,
+            env,
+            f,
+        }
+    }
+
+    pub fn apply(&self, args: &Vec<MalType>) -> Result<MalType, String> {
+        (self.f)(self.env.clone(), &self.params, args, &self.body)
     }
 }
 
@@ -43,6 +60,7 @@ pub enum MalType {
     WithMeta(Box<MalType>, Box<MalType>),
     Function(Function),
     Closure(Box<Closure>),
+    Atom(Rc<RefCell<MalType>>),
 }
 
 impl MalType {
@@ -50,6 +68,13 @@ impl MalType {
         match self {
             MalType::Symbol(name) => Ok(name),
             value => return Err(format!("Expected symbol but got {}.", pr_str(&value, true))),
+        }
+    }
+
+    pub fn as_string(&self) -> Result<&String, String> {
+        match self {
+            MalType::String(value) => Ok(value),
+            value => return Err(format!("Expected string but got {}.", pr_str(&value, true))),
         }
     }
 

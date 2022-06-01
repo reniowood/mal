@@ -1,9 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::types::MalType;
 
 pub struct Env {
-    outer: Option<Rc<RefCell<Env>>>,
+    pub outer: Option<Rc<RefCell<Env>>>,
     data: HashMap<String, MalType>,
 }
 
@@ -58,5 +58,11 @@ impl Env {
             .as_ref()
             .map(|outer| outer.borrow().get(key))
             .flatten()
+    }
+}
+
+impl Display for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "{:?}", self.data.keys())
     }
 }
