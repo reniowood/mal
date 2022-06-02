@@ -151,6 +151,33 @@ pub fn ns() -> HashMap<&'static str, Function> {
         MalType::Vector(_) => Ok(args[0].clone()),
         _ => Err(format!("Expected list or vector, but got {}", &args[0])),
     });
+    ns.insert("nth", |args| {
+        let index = match &args[1] {
+            MalType::Number(value) => *value as usize,
+            _ => return Err(format!("Expected number, but got {}", &args[1])),
+        };
+        match &args[0] {
+            MalType::List(list) | MalType::Vector(list) if list.len() <= index => Err(format!(
+                "The index was {} but the size of the list is {}",
+                index,
+                list.len()
+            )),
+            MalType::List(list) | MalType::Vector(list) => Ok(list.get(index).unwrap().clone()),
+            _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        }
+    });
+    ns.insert("first", |args| match &args[0] {
+        MalType::Nil => Ok(MalType::Nil),
+        MalType::List(list) | MalType::Vector(list) if list.is_empty() => Ok(MalType::Nil),
+        MalType::List(list) | MalType::Vector(list) => Ok(list.get(0).unwrap().clone()),
+        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+    });
+    ns.insert("rest", |args| match &args[0] {
+        MalType::Nil => Ok(MalType::List(vec![])),
+        MalType::List(list) | MalType::Vector(list) if list.is_empty() => Ok(MalType::List(vec![])),
+        MalType::List(list) | MalType::Vector(list) => Ok(MalType::List(list[1..].to_vec())),
+        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+    });
     ns
 }
 

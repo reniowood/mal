@@ -12,6 +12,7 @@ pub struct Closure {
     pub body: MalType,
     pub env: Rc<RefCell<Env>>,
     pub f: ClosureFunction,
+    pub is_macro: bool,
 }
 
 impl Closure {
@@ -26,6 +27,7 @@ impl Closure {
             body,
             env,
             f,
+            is_macro: false,
         }
     }
 
