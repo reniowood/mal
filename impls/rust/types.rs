@@ -69,6 +69,7 @@ pub enum MalType {
     Function(Function),
     Closure(Box<Closure>),
     Atom(Rc<RefCell<MalType>>),
+    Exception(Box<MalType>),
 }
 
 impl MalType {
@@ -153,6 +154,7 @@ impl Debug for MalType {
             Self::Function(_) => f.debug_tuple("Function").finish(),
             Self::Closure(_) => f.debug_tuple("Closure").finish(),
             Self::Atom(arg0) => f.debug_tuple("Atom").field(arg0).finish(),
+            Self::Exception(arg0) => f.debug_tuple("Exception").field(arg0).finish(),
         }
     }
 }

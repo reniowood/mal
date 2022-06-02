@@ -46,6 +46,7 @@ pub fn pr_str(value: &MalType, print_readably: bool) -> String {
         MalType::Function(_) => format!("#<function>"),
         MalType::Closure(_) => format!("#<function>"),
         MalType::Atom(v) => format!("(atom {})", pr_str(&v.borrow(), print_readably)),
+        MalType::Exception(v) => format!("(exception {})", pr_str(&v, print_readably)),
     }
 }
 
