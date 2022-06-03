@@ -49,6 +49,11 @@ fn load_utils(env: Rc<RefCell<Env>>, args: &Vec<String>) {
             )
         },
     );
+    env.borrow_mut().set(
+        "*host-language*".to_string(),
+        MalType::String("rust".to_string()),
+    );
+
     let _ = rep("(def! not (fn* (a) (if a false true)))", &env);
     let _ = rep(
         r#"(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))"#,
@@ -68,6 +73,8 @@ fn run_file(env: &Rc<RefCell<Env>>, filename: &str) {
 }
 
 fn repl(env: &Rc<RefCell<Env>>) {
+    let _ = rep(r#"(println (str "Mal [" *host-language* "]"))"#, &env);
+
     let mut rl = Editor::<()>::new();
 
     loop {
@@ -194,6 +201,30 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                     }
                     MalType::Symbol(name) if name == "macroexpand" => {
                         return macroexpand(&list[1], &env)
+                    }
+                    MalType::Symbol(name) if name == "try*" => {
+                        let error = match eval(&list[1], &env) {
+                            Err(message) => MalType::String(message),
+                            Ok(MalType::Exception(value)) => value.as_ref().clone(),
+                            Ok(result) => return Ok(result),
+                        };
+
+                        match list.get(2) {
+                            Some(MalType::List(list, _))
+                                if list.get(0) == Some(&MalType::symbol("catch*")) =>
+                            {
+                                env = Rc::new(RefCell::new(Env::from(
+                                    Some(env.clone()),
+                                    &vec![list[1].clone()],
+                                    &vec![error],
+                                )));
+                                ast = list[2].clone();
+                            }
+                            Some(value) => {
+                                return Err(format!("Expected catch*, but got {}", value))
+                            }
+                            None => return Err(print(&error)),
+                        };
                     }
                     _ => {
                         let value = eval_ast(&ast, &env)?;

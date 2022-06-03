@@ -34,7 +34,7 @@ impl Env {
                 if name == "&" {
                     let next = &binds[i + 1];
                     if let MalType::Symbol(name) = next {
-                        data.insert(name.clone(), MalType::List(exprs[i..].to_vec()));
+                        data.insert(name.clone(), MalType::List(exprs[i..].to_vec(), None));
                     }
 
                     break;

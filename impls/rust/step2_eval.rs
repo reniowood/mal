@@ -58,19 +58,19 @@ fn read(input: &str) -> Result<MalType, String> {
 
 fn eval(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
     match ast {
-        MalType::List(list) => {
+        MalType::List(list, _) => {
             if list.is_empty() {
                 return Ok(ast.clone());
             }
 
             let result = match eval_ast(ast, repl_env) {
-                Ok(MalType::List(list)) => list,
+                Ok(MalType::List(list, _)) => list,
                 Ok(value) => return Err(format!("Unexpected value {}.", value)),
                 Err(message) => return Err(message),
             };
 
             match &result[0] {
-                MalType::Function(f) => f(&result[1..].to_vec()),
+                MalType::Function(f, _) => f(&result[1..].to_vec()),
                 value => Err(format!("Unexpected value {}.", pr_str(&value, true))),
             }
         }
@@ -83,8 +83,8 @@ fn eval_ast(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
         MalType::Symbol(name) => repl_env
             .get(name.as_str())
             .ok_or(format!("Undefined symbol {}.", name))
-            .map(|f| MalType::Function(*f)),
-        MalType::List(list) => {
+            .map(|f| MalType::Function(*f, None)),
+        MalType::List(list, metadata) => {
             let mut result = Vec::new();
             for value in list {
                 result.push(match eval(value, repl_env) {
@@ -92,9 +92,9 @@ fn eval_ast(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
                     Err(message) => return Err(message),
                 });
             }
-            Ok(MalType::List(result))
+            Ok(MalType::List(result, metadata.clone()))
         }
-        MalType::Vector(list) => {
+        MalType::Vector(list, metadata) => {
             let mut result = Vec::new();
             for value in list {
                 result.push(match eval(value, repl_env) {
@@ -102,9 +102,9 @@ fn eval_ast(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
                     Err(message) => return Err(message),
                 });
             }
-            Ok(MalType::Vector(result))
+            Ok(MalType::Vector(result, metadata.clone()))
         }
-        MalType::Hashmap(map) => {
+        MalType::Hashmap(map, metadata) => {
             let mut result = HashMap::new();
             for (key, value) in map {
                 result.insert(
@@ -115,7 +115,7 @@ fn eval_ast(ast: &MalType, repl_env: &ReplEnv) -> Result<MalType, String> {
                     },
                 );
             }
-            Ok(MalType::Hashmap(result))
+            Ok(MalType::Hashmap(result, metadata.clone()))
         }
         _ => Ok(ast.clone()),
     }

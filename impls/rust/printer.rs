@@ -11,14 +11,14 @@ pub fn pr_str(value: &MalType, print_readably: bool) -> String {
         MalType::Keyword(name) => format!(":{}", name),
         MalType::Symbol(name) => format!("{}", name),
         MalType::String(value) => print_string(value, print_readably),
-        MalType::List(list) => format!(
+        MalType::List(list, _) => format!(
             "({})",
             list.iter()
                 .map(|value| pr_str(value, print_readably))
                 .collect::<Vec<String>>()
                 .join(" ")
         ),
-        MalType::Hashmap(value) => format!(
+        MalType::Hashmap(value, _) => format!(
             "{{{}}}",
             value
                 .iter()
@@ -30,21 +30,15 @@ pub fn pr_str(value: &MalType, print_readably: bool) -> String {
                 .collect::<Vec<String>>()
                 .join(" ")
         ),
-        MalType::Vector(list) => format!(
+        MalType::Vector(list, _) => format!(
             "[{}]",
             list.iter()
                 .map(|value| pr_str(value, print_readably))
                 .collect::<Vec<String>>()
                 .join(" ")
         ),
-        MalType::Deref(value) => format!("(deref {})", pr_str(value, print_readably)),
-        MalType::WithMeta(first, second) => format!(
-            "(with-meta {} {})",
-            pr_str(second, print_readably),
-            pr_str(first, print_readably)
-        ),
-        MalType::Function(_) => format!("#<function>"),
-        MalType::Closure(_) => format!("#<function>"),
+        MalType::Function(_, _) => format!("#<function>"),
+        MalType::Closure(_, _) => format!("#<function>"),
         MalType::Atom(v) => format!("(atom {})", pr_str(&v.borrow(), print_readably)),
         MalType::Exception(v) => format!("(exception {})", pr_str(&v, print_readably)),
     }

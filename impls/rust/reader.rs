@@ -57,7 +57,7 @@ impl Reader {
 
             if let Token::RightParen = token {
                 self.tokens.pop_front();
-                return Ok(MalType::List(list));
+                return Ok(MalType::List(list, None));
             }
 
             match self.read_form() {
@@ -80,26 +80,32 @@ impl Reader {
             Token::LeftBracket => self.read_vector(),
             Token::Quote => self
                 .read_form()
-                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("quote"), value]))),
-            Token::Backtick => self
-                .read_form()
-                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("quasiquote"), value]))),
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("quote"), value], None))),
+            Token::Backtick => self.read_form().and_then(|value| {
+                Ok(MalType::List(
+                    vec![MalType::symbol("quasiquote"), value],
+                    None,
+                ))
+            }),
             Token::Tilde => self
                 .read_form()
-                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("unquote"), value]))),
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("unquote"), value], None))),
             Token::TildeAt => self.read_form().and_then(|value| {
-                Ok(MalType::List(vec![
-                    MalType::symbol("splice-unquote"),
-                    value,
-                ]))
+                Ok(MalType::List(
+                    vec![MalType::symbol("splice-unquote"), value],
+                    None,
+                ))
             }),
-            Token::At => match self.tokens.pop_front() {
-                Some(Token::Symbol(name)) => Ok(MalType::Deref(Box::new(self.read_symbol(name)))),
-                next => Err(format!("Unexpected next token {:?}.", next)),
-            },
-            Token::Caret => self.read_form().and_then(|first| {
-                self.read_form()
-                    .and_then(|second| Ok(MalType::WithMeta(Box::new(first), Box::new(second))))
+            Token::At => self
+                .read_form()
+                .and_then(|value| Ok(MalType::List(vec![MalType::symbol("deref"), value], None))),
+            Token::Caret => self.read_form().and_then(|second| {
+                self.read_form().and_then(|first| {
+                    Ok(MalType::List(
+                        vec![MalType::symbol("with-meta"), first, second],
+                        None,
+                    ))
+                })
             }),
             _ => Err(format!("Unexpected token {:?}.", token)),
         }
@@ -125,7 +131,7 @@ impl Reader {
 
             if let Token::RightBrace = token {
                 self.tokens.pop_front();
-                return Ok(MalType::Hashmap(hashmap));
+                return Ok(MalType::Hashmap(hashmap, None));
             }
 
             let key = match self.read_form() {
@@ -153,7 +159,7 @@ impl Reader {
 
             if let Token::RightBracket = token {
                 self.tokens.pop_front();
-                return Ok(MalType::Vector(list));
+                return Ok(MalType::Vector(list, None));
             }
 
             match self.read_form() {

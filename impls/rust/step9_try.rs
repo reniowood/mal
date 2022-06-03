@@ -29,7 +29,7 @@ fn main() {
 fn create_env() -> Rc<RefCell<Env>> {
     let mut env: Env = Env::new(None);
     for (symbol, function) in ns() {
-        env.set(symbol.to_string(), MalType::Function(function));
+        env.set(symbol.to_string(), MalType::Function(function, None));
     }
     Rc::new(RefCell::new(env))
 }
@@ -38,13 +38,14 @@ fn load_utils(env: Rc<RefCell<Env>>, args: &Vec<String>) {
     env.borrow_mut().set(
         "*ARGV*".to_string(),
         if args.len() < 3 {
-            MalType::List(Vec::new())
+            MalType::List(Vec::new(), None)
         } else {
             MalType::List(
                 args[2..]
                     .iter()
                     .map(|v| MalType::String(v.to_string()))
                     .collect(),
+                None,
             )
         },
     );
@@ -102,7 +103,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
         ast = macroexpand(&ast, &env)?;
 
         match &ast {
-            MalType::List(list) => {
+            MalType::List(list, _) => {
                 if list.is_empty() {
                     return Ok(ast.clone());
                 }
@@ -126,7 +127,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                         ast = list[2].clone();
                     }
                     MalType::Symbol(name) if name == "do" => {
-                        let list = MalType::List(list[1..].to_vec());
+                        let list = MalType::List(list[1..].to_vec(), None);
                         let result = eval_ast(&list, &env)?;
                         let result = result.as_list()?;
                         ast = result[result.len() - 1].clone();
@@ -147,21 +148,24 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                     MalType::Symbol(name) if name == "fn*" => {
                         let params = list[1].as_list()?;
                         let body = &list[2];
-                        return Ok(MalType::Closure(Box::new(Closure::new(
-                            params.clone(),
-                            body.clone(),
-                            env.clone(),
-                            |env, params, args, body| {
-                                eval(
-                                    body,
-                                    &Rc::new(RefCell::new(Env::from(
-                                        Some(env.clone()),
-                                        &params,
-                                        &args,
-                                    ))),
-                                )
-                            },
-                        ))));
+                        return Ok(MalType::Closure(
+                            Box::new(Closure::new(
+                                params.clone(),
+                                body.clone(),
+                                env.clone(),
+                                |env, params, args, body| {
+                                    eval(
+                                        body,
+                                        &Rc::new(RefCell::new(Env::from(
+                                            Some(env.clone()),
+                                            &params,
+                                            &args,
+                                        ))),
+                                    )
+                                },
+                            )),
+                            None,
+                        ));
                     }
                     MalType::Symbol(name) if name == "eval" => {
                         ast = eval(&list[1], &env)?;
@@ -178,10 +182,11 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                         let key = list[1].as_symbol()?;
                         let value = eval(&list[2], &env)?;
                         return match &value {
-                            MalType::Closure(closure) => {
+                            MalType::Closure(closure, _) => {
                                 let mut closure = closure.clone();
                                 closure.is_macro = true;
-                                env.borrow_mut().set(key.clone(), MalType::Closure(closure));
+                                env.borrow_mut()
+                                    .set(key.clone(), MalType::Closure(closure, None));
                                 Ok(value)
                             }
                             _ => Err(format!("Expected function, but got {}", value)),
@@ -198,7 +203,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                         };
 
                         match list.get(2) {
-                            Some(MalType::List(list))
+                            Some(MalType::List(list, _))
                                 if list.get(0) == Some(&MalType::symbol("catch*")) =>
                             {
                                 env = Rc::new(RefCell::new(Env::from(
@@ -218,7 +223,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                         let value = eval_ast(&ast, &env)?;
                         let list = value.as_list()?;
                         match &list[0] {
-                            MalType::Closure(closure) => {
+                            MalType::Closure(closure, _) => {
                                 ast = closure.body.clone();
                                 env = Rc::new(RefCell::new(Env::from(
                                     Some(closure.env.clone()),
@@ -226,7 +231,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                                     &list[1..].to_vec(),
                                 )));
                             }
-                            MalType::Function(function) => return function(&list[1..].to_vec()),
+                            MalType::Function(function, _) => return function(&list[1..].to_vec()),
                             _ => return Err(format!("Expected function but got {}", &list[0])),
                         }
                     }
@@ -244,33 +249,26 @@ fn eval_ast(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
             .get(name.as_str())
             .map(|value| value.clone())
             .ok_or(format!("'{}' not found", name)),
-        MalType::List(list) => {
+        MalType::List(list, metadata) => {
             let mut result = Vec::new();
             for value in list {
                 result.push(eval(value, &env)?);
             }
-            Ok(MalType::List(result))
+            Ok(MalType::List(result, metadata.clone()))
         }
-        MalType::Vector(list) => {
+        MalType::Vector(list, metadata) => {
             let mut result = Vec::new();
             for value in list {
                 result.push(eval(value, &env)?);
             }
-            Ok(MalType::Vector(result))
+            Ok(MalType::Vector(result, metadata.clone()))
         }
-        MalType::Hashmap(map) => {
+        MalType::Hashmap(map, metadata) => {
             let mut result = HashMap::new();
             for (key, value) in map {
                 result.insert(key.clone(), eval(value, &env)?);
             }
-            Ok(MalType::Hashmap(result))
-        }
-        MalType::Deref(name) => {
-            let list = vec![
-                eval_ast(&MalType::symbol("deref"), &env)?,
-                name.as_ref().clone(),
-            ];
-            eval(&MalType::List(list), &env)
+            Ok(MalType::Hashmap(result, metadata.clone()))
         }
         _ => Ok(ast.clone()),
     }
@@ -282,15 +280,15 @@ fn print(ast: &MalType) -> String {
 
 fn quasiquote(ast: &MalType) -> MalType {
     match ast {
-        MalType::List(list) => match &list.first() {
+        MalType::List(list, _) => match &list.first() {
             Some(MalType::Symbol(name)) if name == "unquote" => list[1].clone(),
             _ => quasiquote_list(&list),
         },
-        MalType::Vector(list) => {
-            MalType::List(vec![MalType::symbol("vec"), quasiquote_list(&list)])
+        MalType::Vector(list, _) => {
+            MalType::List(vec![MalType::symbol("vec"), quasiquote_list(&list)], None)
         }
-        MalType::Hashmap(_) | MalType::Symbol(_) => {
-            MalType::List(vec![MalType::symbol("quote"), ast.clone()])
+        MalType::Hashmap(_, _) | MalType::Symbol(_) => {
+            MalType::List(vec![MalType::symbol("quote"), ast.clone()], None)
         }
         _ => ast.clone(),
     }
@@ -301,7 +299,7 @@ fn quasiquote_list(list: &Vec<MalType>) -> MalType {
     for elt in list.iter().rev() {
         let mut new_list = Vec::new();
         match elt {
-            MalType::List(list) if list.first() == Some(&MalType::symbol("splice-unquote")) => {
+            MalType::List(list, _) if list.first() == Some(&MalType::symbol("splice-unquote")) => {
                 new_list.push(MalType::symbol("concat"));
                 new_list.push(list[1].clone());
             }
@@ -310,16 +308,16 @@ fn quasiquote_list(list: &Vec<MalType>) -> MalType {
                 new_list.push(quasiquote(elt));
             }
         };
-        new_list.push(MalType::List(result.clone()));
+        new_list.push(MalType::List(result.clone(), None));
         result = new_list;
     }
-    MalType::List(result)
+    MalType::List(result, None)
 }
 
 fn is_macro_call(ast: &MalType, env: &Rc<RefCell<Env>>) -> bool {
-    if let MalType::List(list) = ast {
+    if let MalType::List(list, _) = ast {
         if let Some(MalType::Symbol(name)) = list.first() {
-            if let Some(MalType::Closure(closure)) = env.borrow().get(name) {
+            if let Some(MalType::Closure(closure, _)) = env.borrow().get(name) {
                 return closure.is_macro;
             }
         }
@@ -331,9 +329,9 @@ fn is_macro_call(ast: &MalType, env: &Rc<RefCell<Env>>) -> bool {
 fn macroexpand(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
     let mut ast = ast.clone();
     while is_macro_call(&ast, env) {
-        if let MalType::List(list) = &ast {
+        if let MalType::List(list, _) = &ast {
             if let Some(MalType::Symbol(name)) = list.first() {
-                if let Some(MalType::Closure(closure)) = env.borrow().get(name) {
+                if let Some(MalType::Closure(closure, _)) = env.borrow().get(name) {
                     ast = closure.apply(&list[1..].to_vec())?;
                 }
             }

@@ -61,13 +61,11 @@ pub enum MalType {
     Symbol(String),
     Keyword(String),
     String(String),
-    List(Vec<MalType>),
-    Hashmap(HashMap<Hashable, MalType>),
-    Vector(Vec<MalType>),
-    Deref(Box<MalType>),
-    WithMeta(Box<MalType>, Box<MalType>),
-    Function(Function),
-    Closure(Box<Closure>),
+    List(Vec<MalType>, Option<Box<MalType>>),
+    Hashmap(HashMap<Hashable, MalType>, Option<Box<MalType>>),
+    Vector(Vec<MalType>, Option<Box<MalType>>),
+    Function(Function, Option<Box<MalType>>),
+    Closure(Box<Closure>, Option<Box<MalType>>),
     Atom(Rc<RefCell<MalType>>),
     Exception(Box<MalType>),
 }
@@ -89,15 +87,15 @@ impl MalType {
 
     pub fn as_list(&self) -> Result<&Vec<MalType>, String> {
         match self {
-            MalType::List(list) => Ok(list),
-            MalType::Vector(list) => Ok(list),
+            MalType::List(list, _) => Ok(list),
+            MalType::Vector(list, _) => Ok(list),
             value => return Err(format!("Expected list but got {}.", pr_str(&value, true))),
         }
     }
 
     pub fn as_function(&self) -> Result<&Function, String> {
         match self {
-            MalType::Function(f) => Ok(f),
+            MalType::Function(f, _) => Ok(f),
             value => {
                 return Err(format!(
                     "Expected function but got {}.",
@@ -122,11 +120,11 @@ impl PartialEq for MalType {
             (MalType::Symbol(a), MalType::Symbol(b)) => a == b,
             (MalType::Keyword(a), MalType::Keyword(b)) => a == b,
             (MalType::String(a), MalType::String(b)) => a == b,
-            (MalType::List(a), MalType::List(b)) => a == b,
-            (MalType::Hashmap(a), MalType::Hashmap(b)) => a == b,
-            (MalType::Vector(a), MalType::Vector(b)) => a == b,
-            (MalType::List(a), MalType::Vector(b)) => a == b,
-            (MalType::Vector(a), MalType::List(b)) => a == b,
+            (MalType::List(a, _), MalType::List(b, _)) => a == b,
+            (MalType::Hashmap(a, _), MalType::Hashmap(b, _)) => a == b,
+            (MalType::Vector(a, _), MalType::Vector(b, _)) => a == b,
+            (MalType::List(a, _), MalType::Vector(b, _)) => a == b,
+            (MalType::Vector(a, _), MalType::List(b, _)) => a == b,
             _ => false,
         }
     }
@@ -144,15 +142,11 @@ impl Debug for MalType {
             Self::Symbol(arg0) => f.debug_tuple("Symbol").field(arg0).finish(),
             Self::Keyword(arg0) => f.debug_tuple("Keyword").field(arg0).finish(),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
-            Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
-            Self::Hashmap(arg0) => f.debug_tuple("Hashmap").field(arg0).finish(),
-            Self::Vector(arg0) => f.debug_tuple("Vector").field(arg0).finish(),
-            Self::Deref(arg0) => f.debug_tuple("Deref").field(arg0).finish(),
-            Self::WithMeta(arg0, arg1) => {
-                f.debug_tuple("WithMeta").field(arg0).field(arg1).finish()
-            }
-            Self::Function(_) => f.debug_tuple("Function").finish(),
-            Self::Closure(_) => f.debug_tuple("Closure").finish(),
+            Self::List(arg0, meta) => f.debug_tuple("List").field(arg0).field(meta).finish(),
+            Self::Hashmap(arg0, meta) => f.debug_tuple("Hashmap").field(arg0).field(meta).finish(),
+            Self::Vector(arg0, meta) => f.debug_tuple("Vector").field(arg0).field(meta).finish(),
+            Self::Function(_, meta) => f.debug_tuple("Function").field(meta).finish(),
+            Self::Closure(_, meta) => f.debug_tuple("Closure").field(meta).finish(),
             Self::Atom(arg0) => f.debug_tuple("Atom").field(arg0).finish(),
             Self::Exception(arg0) => f.debug_tuple("Exception").field(arg0).finish(),
         }
