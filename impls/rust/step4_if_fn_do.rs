@@ -11,7 +11,7 @@ use env::Env;
 use printer::pr_str;
 use reader::read_str;
 use rustyline::Editor;
-use types::{Closure, MalType};
+use types::{error, Closure, MalType};
 
 fn main() {
     let mut rl = Editor::<()>::new();
@@ -41,16 +41,18 @@ fn main() {
 
 fn rep(input: &str, env: &Rc<RefCell<Env>>) -> Result<String, String> {
     match read(input) {
-        Ok(value) => eval(&value, &env).and_then(|result| Ok(print(&result))),
-        Err(message) => Err(message),
+        Ok(value) => eval(&value, env)
+            .and_then(|result| Ok(print(&result)))
+            .map_err(|err| print(&err)),
+        Err(value) => Err(print(&value)),
     }
 }
 
-fn read(input: &str) -> Result<MalType, String> {
+fn read(input: &str) -> Result<MalType, MalType> {
     read_str(input)
 }
 
-fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
+fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, MalType> {
     match ast {
         MalType::List(list, _) => {
             if list.is_empty() {
@@ -128,7 +130,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                             eval(&closure.body, &new_env)
                         }
                         MalType::Function(function, _) => function(&list[1..].to_vec()),
-                        _ => return Err(format!("Expected function but got {}", &list[0])),
+                        _ => return error(format!("Expected function but got {}", &list[0])),
                     }
                 }
             }
@@ -137,13 +139,13 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
     }
 }
 
-fn eval_ast(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
+fn eval_ast(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, MalType> {
     match ast {
         MalType::Symbol(name) => env
             .borrow()
             .get(name.as_str())
             .map(|value| value.clone())
-            .ok_or(format!("'{}' not found", name)),
+            .ok_or(MalType::String(format!("'{}' not found", name))),
         MalType::List(list, metadata) => {
             let mut result = Vec::new();
             for value in list {

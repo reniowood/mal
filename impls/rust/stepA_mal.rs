@@ -11,7 +11,7 @@ use env::Env;
 use printer::pr_str;
 use reader::read_str;
 use rustyline::Editor;
-use types::{Closure, MalType};
+use types::{error, Closure, MalType};
 
 fn main() {
     let env = create_env();
@@ -69,7 +69,7 @@ fn run_file(env: &Rc<RefCell<Env>>, filename: &str) {
     let load_file = format!("(load-file \"{}\")", filename);
     if let Err(message) = rep(&load_file, &env) {
         eprintln!("Error: {}", message);
-    }
+    };
 }
 
 fn repl(env: &Rc<RefCell<Env>>) {
@@ -94,16 +94,18 @@ fn repl(env: &Rc<RefCell<Env>>) {
 
 fn rep(input: &str, env: &Rc<RefCell<Env>>) -> Result<String, String> {
     match read(input) {
-        Ok(value) => eval(&value, env).and_then(|result| Ok(print(&result))),
-        Err(message) => Err(message),
+        Ok(value) => eval(&value, env)
+            .and_then(|result| Ok(print(&result)))
+            .map_err(|err| print(&err)),
+        Err(value) => Err(print(&value)),
     }
 }
 
-fn read(input: &str) -> Result<MalType, String> {
+fn read(input: &str) -> Result<MalType, MalType> {
     read_str(input)
 }
 
-fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
+fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, MalType> {
     let mut ast = ast.clone();
     let mut env = env.clone();
     loop {
@@ -134,10 +136,13 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                         ast = list[2].clone();
                     }
                     MalType::Symbol(name) if name == "do" => {
-                        let list = MalType::List(list[1..].to_vec(), None);
-                        let result = eval_ast(&list, &env)?;
-                        let result = result.as_list()?;
-                        ast = result[result.len() - 1].clone();
+                        match eval_ast(
+                            &MalType::List(list[1..list.len() - 1].to_vec(), None),
+                            &env,
+                        )? {
+                            MalType::List(_, _) => ast = list[list.len() - 1].clone(),
+                            _ => return error("Invalid do expression".to_string()),
+                        }
                     }
                     MalType::Symbol(name) if name == "if" => {
                         let condition = eval(&list[1], &env)?;
@@ -196,17 +201,16 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                                     .set(key.clone(), MalType::Closure(closure, None));
                                 Ok(value)
                             }
-                            _ => Err(format!("Expected function, but got {}", value)),
+                            _ => error(format!("Expected function, but got {}", value)),
                         };
                     }
                     MalType::Symbol(name) if name == "macroexpand" => {
                         return macroexpand(&list[1], &env)
                     }
                     MalType::Symbol(name) if name == "try*" => {
-                        let error = match eval(&list[1], &env) {
-                            Err(message) => MalType::String(message),
-                            Ok(MalType::Exception(value)) => value.as_ref().clone(),
+                        let error_value = match eval(&list[1], &env) {
                             Ok(result) => return Ok(result),
+                            Err(value) => value,
                         };
 
                         match list.get(2) {
@@ -216,14 +220,14 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                                 env = Rc::new(RefCell::new(Env::from(
                                     Some(env.clone()),
                                     &vec![list[1].clone()],
-                                    &vec![error],
+                                    &vec![error_value],
                                 )));
                                 ast = list[2].clone();
                             }
                             Some(value) => {
-                                return Err(format!("Expected catch*, but got {}", value))
+                                return error(format!("Expected catch*, but got {}", value))
                             }
-                            None => return Err(print(&error)),
+                            None => return error(print(&error_value)),
                         };
                     }
                     _ => {
@@ -239,7 +243,7 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
                                 )));
                             }
                             MalType::Function(function, _) => return function(&list[1..].to_vec()),
-                            _ => return Err(format!("Expected function but got {}", &list[0])),
+                            _ => return error(format!("Expected function but got {}", &list[0])),
                         }
                     }
                 };
@@ -249,13 +253,13 @@ fn eval(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
     }
 }
 
-fn eval_ast(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
+fn eval_ast(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, MalType> {
     match ast {
         MalType::Symbol(name) => env
             .borrow()
             .get(name.as_str())
             .map(|value| value.clone())
-            .ok_or(format!("'{}' not found", name)),
+            .ok_or(MalType::String(format!("'{}' not found", name))),
         MalType::List(list, metadata) => {
             let mut result = Vec::new();
             for value in list {
@@ -333,7 +337,7 @@ fn is_macro_call(ast: &MalType, env: &Rc<RefCell<Env>>) -> bool {
     false
 }
 
-fn macroexpand(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, String> {
+fn macroexpand(ast: &MalType, env: &Rc<RefCell<Env>>) -> Result<MalType, MalType> {
     let mut ast = ast.clone();
     while is_macro_call(&ast, env) {
         if let MalType::List(list, _) = &ast {

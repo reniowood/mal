@@ -2,9 +2,9 @@ use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use crate::{env::Env, printer::pr_str};
 
-pub type Function = fn(&Vec<MalType>) -> Result<MalType, String>;
+pub type Function = fn(&Vec<MalType>) -> Result<MalType, MalType>;
 pub type ClosureFunction =
-    fn(Rc<RefCell<Env>>, &Vec<MalType>, &Vec<MalType>, &MalType) -> Result<MalType, String>;
+    fn(Rc<RefCell<Env>>, &Vec<MalType>, &Vec<MalType>, &MalType) -> Result<MalType, MalType>;
 
 #[derive(Clone)]
 pub struct Closure {
@@ -31,7 +31,7 @@ impl Closure {
         }
     }
 
-    pub fn apply(&self, args: &Vec<MalType>) -> Result<MalType, String> {
+    pub fn apply(&self, args: &Vec<MalType>) -> Result<MalType, MalType> {
         (self.f)(self.env.clone(), &self.params, args, &self.body)
     }
 }
@@ -67,37 +67,40 @@ pub enum MalType {
     Function(Function, Option<Box<MalType>>),
     Closure(Box<Closure>, Option<Box<MalType>>),
     Atom(Rc<RefCell<MalType>>),
-    Exception(Box<MalType>),
+}
+
+pub fn error<T>(message: String) -> Result<T, MalType> {
+    Err(MalType::String(message))
 }
 
 impl MalType {
-    pub fn as_symbol(&self) -> Result<&String, String> {
+    pub fn as_symbol(&self) -> Result<&String, MalType> {
         match self {
             MalType::Symbol(name) => Ok(name),
-            value => return Err(format!("Expected symbol but got {}.", pr_str(&value, true))),
+            value => return error(format!("Expected symbol but got {}.", pr_str(&value, true))),
         }
     }
 
-    pub fn as_string(&self) -> Result<&String, String> {
+    pub fn as_string(&self) -> Result<&String, MalType> {
         match self {
             MalType::String(value) => Ok(value),
-            value => return Err(format!("Expected string but got {}.", pr_str(&value, true))),
+            value => return error(format!("Expected string but got {}.", pr_str(&value, true))),
         }
     }
 
-    pub fn as_list(&self) -> Result<&Vec<MalType>, String> {
+    pub fn as_list(&self) -> Result<&Vec<MalType>, MalType> {
         match self {
             MalType::List(list, _) => Ok(list),
             MalType::Vector(list, _) => Ok(list),
-            value => return Err(format!("Expected list but got {}.", pr_str(&value, true))),
+            value => return error(format!("Expected list but got {}.", pr_str(&value, true))),
         }
     }
 
-    pub fn as_function(&self) -> Result<&Function, String> {
+    pub fn as_function(&self) -> Result<&Function, MalType> {
         match self {
             MalType::Function(f, _) => Ok(f),
             value => {
-                return Err(format!(
+                return error(format!(
                     "Expected function but got {}.",
                     pr_str(&value, true)
                 ))
@@ -148,7 +151,6 @@ impl Debug for MalType {
             Self::Function(_, meta) => f.debug_tuple("Function").field(meta).finish(),
             Self::Closure(_, meta) => f.debug_tuple("Closure").field(meta).finish(),
             Self::Atom(arg0) => f.debug_tuple("Atom").field(arg0).finish(),
-            Self::Exception(arg0) => f.debug_tuple("Exception").field(arg0).finish(),
         }
     }
 }

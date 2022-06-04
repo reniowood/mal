@@ -29,11 +29,11 @@ fn main() {
 fn rep(input: &str) -> Result<String, String> {
     match read(input) {
         Ok(value) => Ok(print(eval(&value))),
-        Err(message) => Err(message),
+        Err(message) => Err(print(&message)),
     }
 }
 
-fn read(input: &str) -> Result<MalType, String> {
+fn read(input: &str) -> Result<MalType, MalType> {
     read_str(input)
 }
 

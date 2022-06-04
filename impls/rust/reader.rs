@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::types::{Hashable, MalType};
+use crate::types::{error, Hashable, MalType};
 
 #[derive(Clone, Debug)]
 enum Token {
@@ -31,10 +31,10 @@ impl Reader {
         Reader { tokens }
     }
 
-    pub fn read_form(&mut self) -> Result<MalType, String> {
+    pub fn read_form(&mut self) -> Result<MalType, MalType> {
         let token = match self.tokens.front() {
             Some(token) => token,
-            None => return Err("Unexpected EOF.".to_string()),
+            None => return error("Unexpected EOF.".to_string()),
         };
 
         match token {
@@ -46,7 +46,7 @@ impl Reader {
         }
     }
 
-    fn read_list(&mut self) -> Result<MalType, String> {
+    fn read_list(&mut self) -> Result<MalType, MalType> {
         let mut list = Vec::new();
 
         loop {
@@ -62,14 +62,14 @@ impl Reader {
 
             match self.read_form() {
                 Ok(result) => list.push(result),
-                Err(message) => return Err(message),
+                Err(value) => return Err(value),
             }
         }
 
-        Err("Unexpected EOF.".to_string())
+        error("Unexpected EOF.".to_string())
     }
 
-    fn read_atom(&mut self) -> Result<MalType, String> {
+    fn read_atom(&mut self) -> Result<MalType, MalType> {
         let token = self.tokens.pop_front().unwrap();
         match token {
             Token::Number(value) => Ok(MalType::Number(value)),
@@ -107,7 +107,7 @@ impl Reader {
                     ))
                 })
             }),
-            _ => Err(format!("Unexpected token {:?}.", token)),
+            _ => error(format!("Unexpected token {:?}.", token)),
         }
     }
 
@@ -120,7 +120,7 @@ impl Reader {
         }
     }
 
-    fn read_hashmap(&mut self) -> Result<MalType, String> {
+    fn read_hashmap(&mut self) -> Result<MalType, MalType> {
         let mut hashmap = HashMap::new();
 
         loop {
@@ -137,18 +137,18 @@ impl Reader {
             let key = match self.read_form() {
                 Ok(MalType::String(value)) => Hashable::String(value),
                 Ok(MalType::Keyword(name)) => Hashable::Keyword(name),
-                Ok(_) => return Err(format!("Unexpected token {:?}", token)),
-                Err(message) => return Err(message),
+                Ok(_) => return error(format!("Unexpected token {:?}", token)),
+                Err(value) => return Err(value),
             };
             match self.read_form() {
                 Ok(result) => hashmap.insert(key, result),
-                Err(message) => return Err(message),
+                Err(value) => return Err(value),
             };
         }
 
-        Err("Unexpected EOF.".to_string())
+        error("Unexpected EOF.".to_string())
     }
-    fn read_vector(&mut self) -> Result<MalType, String> {
+    fn read_vector(&mut self) -> Result<MalType, MalType> {
         let mut list = Vec::new();
 
         loop {
@@ -164,22 +164,22 @@ impl Reader {
 
             match self.read_form() {
                 Ok(result) => list.push(result),
-                Err(message) => return Err(message),
+                Err(value) => return Err(value),
             }
         }
 
-        Err("Unexpected EOF.".to_string())
+        error("Unexpected EOF.".to_string())
     }
 }
 
-pub fn read_str(string: &str) -> Result<MalType, String> {
+pub fn read_str(string: &str) -> Result<MalType, MalType> {
     let tokens = tokenize(string);
     match tokens {
         Ok(tokens) => {
             let mut reader = Reader::new(tokens);
             reader.read_form()
         }
-        Err(message) => Err(message),
+        Err(message) => error(message),
     }
 }
 

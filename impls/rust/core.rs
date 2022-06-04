@@ -8,7 +8,7 @@ use std::time::UNIX_EPOCH;
 
 use crate::printer::pr_str;
 use crate::reader::read_str;
-use crate::types::{Function, MalType};
+use crate::types::{error, Function, MalType};
 use rustyline::Editor;
 
 pub fn ns() -> HashMap<&'static str, Function> {
@@ -50,7 +50,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
                     Ok(MalType::False)
                 }
             }
-            value => Err(format!("Expected list but got {}.", value)),
+            value => error(format!("Expected list but got {}.", value)),
         })
     });
     ns.insert("count", |args| {
@@ -59,7 +59,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
                 Ok(MalType::Number(list.len() as i64))
             }
             MalType::Nil => Ok(MalType::Number(0)),
-            value => Err(format!("Expected list or nil but got {}.", value)),
+            value => error(format!("Expected list or nil but got {}.", value)),
         })
     });
     ns.insert("=", |args| {
@@ -93,21 +93,21 @@ pub fn ns() -> HashMap<&'static str, Function> {
     });
     ns.insert("deref", |args| match &args[0] {
         MalType::Atom(v) => Ok(v.borrow().clone()),
-        v => Err(format!("Expected atom, but got {}", v)),
+        v => error(format!("Expected atom, but got {}", v)),
     });
     ns.insert("reset!", |args| {
         if let MalType::Atom(v) = &args[0] {
             *v.borrow_mut() = args[1].clone();
             Ok(v.borrow().clone())
         } else {
-            Err(format!("Expected atom, but got {}", &args[0]))
+            error(format!("Expected atom, but got {}", &args[0]))
         }
     });
     ns.insert("swap!", |args| {
         let atom_value = if let MalType::Atom(v) = &args[0] {
             v
         } else {
-            return Err(format!("Expected atom, but got {}", &args[0]));
+            return error(format!("Expected atom, but got {}", &args[0]));
         };
 
         let mut f_args = Vec::new();
@@ -117,12 +117,9 @@ pub fn ns() -> HashMap<&'static str, Function> {
         }
 
         let result = match &args[1] {
-            MalType::Function(f, _) => match f(&f_args) {
-                Ok(MalType::Exception(e)) => return Ok(MalType::Exception(e)),
-                result => result,
-            },
+            MalType::Function(f, _) => f(&f_args),
             MalType::Closure(closure, _) => closure.apply(&f_args),
-            _ => return Err(format!("Expected function, but got {}", &args[1])),
+            _ => return error(format!("Expected function, but got {}", &args[1])),
         };
 
         if let Ok(value) = &result {
@@ -135,7 +132,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
         let head = &args[0];
         let tail = match &args[1] {
             MalType::List(list, _) | MalType::Vector(list, _) => list,
-            _ => return Err(format!("Expected list or vector, but got {}", &args[1])),
+            _ => return error(format!("Expected list or vector, but got {}", &args[1])),
         };
 
         let mut list = Vec::new();
@@ -149,7 +146,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
         for arg in args {
             match arg {
                 MalType::List(list, _) | MalType::Vector(list, _) => result.extend(list.clone()),
-                _ => return Err(format!("Expected list or vector, but got {}", arg)),
+                _ => return error(format!("Expected list or vector, but got {}", arg)),
             };
         }
 
@@ -158,16 +155,16 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("vec", |args| match &args[0] {
         MalType::List(list, _) => Ok(MalType::Vector(list.clone(), None)),
         MalType::Vector(_, _) => Ok(args[0].clone()),
-        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        _ => error(format!("Expected list or vector, but got {}", &args[0])),
     });
     ns.insert("nth", |args| {
         let index = match &args[1] {
             MalType::Number(value) => *value as usize,
-            _ => return Err(format!("Expected number, but got {}", &args[1])),
+            _ => return error(format!("Expected number, but got {}", &args[1])),
         };
         match &args[0] {
             MalType::List(list, _) | MalType::Vector(list, _) if list.len() <= index => {
-                Err(format!(
+                error(format!(
                     "Out of range: The index was {} but the size of the list is {}",
                     index,
                     list.len()
@@ -176,14 +173,14 @@ pub fn ns() -> HashMap<&'static str, Function> {
             MalType::List(list, _) | MalType::Vector(list, _) => {
                 Ok(list.get(index).unwrap().clone())
             }
-            _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+            _ => error(format!("Expected list or vector, but got {}", &args[0])),
         }
     });
     ns.insert("first", |args| match &args[0] {
         MalType::Nil => Ok(MalType::Nil),
         MalType::List(list, _) | MalType::Vector(list, _) if list.is_empty() => Ok(MalType::Nil),
         MalType::List(list, _) | MalType::Vector(list, _) => Ok(list.get(0).unwrap().clone()),
-        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        _ => error(format!("Expected list or vector, but got {}", &args[0])),
     });
     ns.insert("rest", |args| match &args[0] {
         MalType::Nil => Ok(MalType::List(vec![], None)),
@@ -193,11 +190,9 @@ pub fn ns() -> HashMap<&'static str, Function> {
         MalType::List(list, _) | MalType::Vector(list, _) => {
             Ok(MalType::List(list[1..].to_vec(), None))
         }
-        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        _ => error(format!("Expected list or vector, but got {}", &args[0])),
     });
-    ns.insert("throw", |args| {
-        Ok(MalType::Exception(Box::new(args[0].clone())))
-    });
+    ns.insert("throw", |args| Err(args[0].clone()));
     ns.insert("apply", |args| {
         let last_index = args.len() - 1;
         let f_args = match &args[last_index] {
@@ -207,15 +202,12 @@ pub fn ns() -> HashMap<&'static str, Function> {
                 f_args.extend(list.clone());
                 f_args
             }
-            last_arg => return Err(format!("Expected list or vector, but got {}", &last_arg)),
+            last_arg => return error(format!("Expected list or vector, but got {}", &last_arg)),
         };
         match &args[0] {
             MalType::Closure(closure, _) => closure.apply(&f_args),
-            MalType::Function(f, _) => match f(&f_args) {
-                Ok(MalType::Exception(e)) => return Ok(MalType::Exception(e)),
-                result => result,
-            },
-            _ => Err(format!("Expected function, but got {}", &args[0])),
+            MalType::Function(f, _) => f(&f_args),
+            _ => error(format!("Expected function, but got {}", &args[0])),
         }
     });
     ns.insert("map", |args| match &args[1] {
@@ -225,11 +217,8 @@ pub fn ns() -> HashMap<&'static str, Function> {
                 let f_args = vec![value.clone()];
                 let value = match &args[0] {
                     MalType::Closure(closure, _) => closure.apply(&f_args),
-                    MalType::Function(f, _) => match f(&f_args) {
-                        Ok(MalType::Exception(e)) => return Ok(MalType::Exception(e)),
-                        result => result,
-                    },
-                    _ => return Err(format!("Expected function, but got {}", &args[0])),
+                    MalType::Function(f, _) => f(&f_args),
+                    _ => return error(format!("Expected function, but got {}", &args[0])),
                 };
                 match value {
                     Ok(value) => result.push(value),
@@ -238,7 +227,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
             }
             Ok(MalType::List(result, None))
         }
-        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        _ => error(format!("Expected list or vector, but got {}", &args[0])),
     });
     ns.insert("nil?", |args| {
         Ok(if let MalType::Nil = &args[0] {
@@ -272,13 +261,13 @@ pub fn ns() -> HashMap<&'static str, Function> {
         if let MalType::String(value) = &args[0] {
             Ok(MalType::symbol(value))
         } else {
-            Err(format!("Expected string, but got {}", &args[0]))
+            error(format!("Expected string, but got {}", &args[0]))
         }
     });
     ns.insert("keyword", |args| match &args[0] {
         MalType::String(value) => Ok(MalType::Keyword(value.to_string())),
         MalType::Keyword(value) => Ok(MalType::Keyword(value.clone())),
-        _ => Err(format!("Expected string, but got {}", &args[0])),
+        _ => error(format!("Expected string, but got {}", &args[0])),
     });
     ns.insert("keyword?", |args| {
         Ok(if let MalType::Keyword(_) = &args[0] {
@@ -304,7 +293,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("hash-map", |args| {
         let count = args.len();
         if count % 2 == 1 {
-            return Err(format!(
+            return error(format!(
                 "Expected even number of args, but got {} of args",
                 args.len()
             ));
@@ -315,7 +304,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
             let key = match &args[i] {
                 MalType::String(value) => Hashable::String(value.clone()),
                 MalType::Keyword(value) => Hashable::Keyword(value.clone()),
-                _ => return Err(format!("Expected string or keyword, but got {}", &args[i])),
+                _ => return error(format!("Expected string or keyword, but got {}", &args[i])),
             };
             let value = &args[i + 1];
             map.insert(key, value.clone());
@@ -332,7 +321,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("assoc", |args| {
         let count = args.len();
         if count % 2 == 0 {
-            return Err(format!(
+            return error(format!(
                 "Expected odd number of args, but got {} of args",
                 args.len()
             ));
@@ -340,13 +329,13 @@ pub fn ns() -> HashMap<&'static str, Function> {
 
         let mut map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
         for i in (1..count).step_by(2) {
             let key = match &args[i] {
                 MalType::String(value) => Hashable::String(value.clone()),
                 MalType::Keyword(value) => Hashable::Keyword(value.clone()),
-                _ => return Err(format!("Expected string or keyword, but got {}", &args[i])),
+                _ => return error(format!("Expected string or keyword, but got {}", &args[i])),
             };
             let value = &args[i + 1];
             map.insert(key, value.clone());
@@ -356,13 +345,13 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("dissoc", |args| {
         let mut map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
         for key in &args[1..] {
             let key = match key {
                 MalType::String(value) => Hashable::String(value.clone()),
                 MalType::Keyword(value) => Hashable::Keyword(value.clone()),
-                _ => return Err(format!("Expected string or keyword, but got {}", &key)),
+                _ => return error(format!("Expected string or keyword, but got {}", &key)),
             };
             map.remove(&key);
         }
@@ -372,12 +361,12 @@ pub fn ns() -> HashMap<&'static str, Function> {
         let map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
             MalType::Nil => return Ok(MalType::Nil),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
         let key = match &args[1] {
             MalType::String(value) => Hashable::String(value.clone()),
             MalType::Keyword(value) => Hashable::Keyword(value.clone()),
-            _ => return Err(format!("Expected string or keyword, but got {}", &args[1])),
+            _ => return error(format!("Expected string or keyword, but got {}", &args[1])),
         };
         match map.get(&key) {
             Some(value) => Ok(value.clone()),
@@ -387,12 +376,12 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("contains?", |args| {
         let map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
         let key = match &args[1] {
             MalType::String(value) => Hashable::String(value.clone()),
             MalType::Keyword(value) => Hashable::Keyword(value.clone()),
-            _ => return Err(format!("Expected string or keyword, but got {}", &args[1])),
+            _ => return error(format!("Expected string or keyword, but got {}", &args[1])),
         };
         match map.get(&key) {
             Some(_) => Ok(MalType::True),
@@ -402,7 +391,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("keys", |args| {
         let map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
 
         let mut keys = Vec::new();
@@ -418,7 +407,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("vals", |args| {
         let map = match &args[0] {
             MalType::Hashmap(map, _) => map.clone(),
-            _ => return Err(format!("Expected hashmap, but got {}", &args[0])),
+            _ => return error(format!("Expected hashmap, but got {}", &args[0])),
         };
 
         Ok(MalType::List(
@@ -429,7 +418,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     ns.insert("readline", |args| {
         let prompt = match &args[0] {
             MalType::String(value) => value,
-            _ => return Err(format!("Expected string, but got {}", &args[0])),
+            _ => return error(format!("Expected string, but got {}", &args[0])),
         };
 
         let mut rl = Editor::<()>::new();
@@ -446,7 +435,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
         | MalType::Closure(_, metadata) => Ok(metadata
             .as_ref()
             .map_or(MalType::Nil, |v| v.as_ref().clone())),
-        _ => Err(format!(
+        _ => error(format!(
             "Expected list/vector/hashmap/function, but got {}",
             &args[0]
         )),
@@ -459,7 +448,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
             MalType::Hashmap(map, _) => Ok(MalType::Hashmap(map.clone(), new_metadata)),
             MalType::Function(f, _) => Ok(MalType::Function(f.clone(), new_metadata)),
             MalType::Closure(closure, _) => Ok(MalType::Closure(closure.clone(), new_metadata)),
-            _ => Err(format!(
+            _ => error(format!(
                 "Expected list/vector/hashmap/function, but got {}",
                 &args[0]
             )),
@@ -467,7 +456,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
     });
     ns.insert("time-ms", |_| {
         SystemTime::now().duration_since(UNIX_EPOCH).map_or_else(
-            |e| Err(e.to_string()),
+            |e| error(e.to_string()),
             |n| Ok(MalType::Number(n.as_millis() as i64)),
         )
     });
@@ -488,7 +477,7 @@ pub fn ns() -> HashMap<&'static str, Function> {
             }
             Ok(MalType::Vector(result, metadata.clone()))
         }
-        _ => Err(format!("Expected list or vector, but got {}", &args[0])),
+        _ => error(format!("Expected list or vector, but got {}", &args[0])),
     });
     ns.insert("string?", |args| {
         Ok(if let MalType::String(_) = &args[0] {
@@ -527,44 +516,44 @@ pub fn ns() -> HashMap<&'static str, Function> {
             None,
         )),
         MalType::Nil => Ok(MalType::Nil),
-        _ => Err(format!("Expected list/vector/s, but got {}", &args[0])),
+        _ => error(format!("Expected list/vector/s, but got {}", &args[0])),
     });
     ns
 }
 
-fn binary_number_op(args: &Vec<MalType>, op: fn(i64, i64) -> i64) -> Result<MalType, String> {
+fn binary_number_op(args: &Vec<MalType>, op: fn(i64, i64) -> i64) -> Result<MalType, MalType> {
     match (&args[0], &args[1]) {
         (MalType::Number(a), MalType::Number(b)) => Ok(MalType::Number(op(*a, *b))),
-        (MalType::Number(_), b) => Err(format!("Unexpected second argument {}.", b)),
-        (a, MalType::Number(_)) => Err(format!("Unexpected first argument {}.", a)),
-        (a, b) => Err(format!("Unexpected arguments {} and {}.", a, b)),
+        (MalType::Number(_), b) => error(format!("Unexpected second argument {}.", b)),
+        (a, MalType::Number(_)) => error(format!("Unexpected first argument {}.", a)),
+        (a, b) => error(format!("Unexpected arguments {} and {}.", a, b)),
     }
 }
 
-fn binary_boolean_op(args: &Vec<MalType>, op: fn(i64, i64) -> bool) -> Result<MalType, String> {
+fn binary_boolean_op(args: &Vec<MalType>, op: fn(i64, i64) -> bool) -> Result<MalType, MalType> {
     match (&args[0], &args[1]) {
         (MalType::Number(a), MalType::Number(b)) => Ok(if op(*a, *b) {
             MalType::True
         } else {
             MalType::False
         }),
-        (MalType::Number(_), b) => Err(format!("Unexpected second argument {}.", b)),
-        (a, MalType::Number(_)) => Err(format!("Unexpected first argument {}.", a)),
-        (a, b) => Err(format!("Unexpected arguments {} and {}.", a, b)),
+        (MalType::Number(_), b) => error(format!("Unexpected second argument {}.", b)),
+        (a, MalType::Number(_)) => error(format!("Unexpected first argument {}.", a)),
+        (a, b) => error(format!("Unexpected arguments {} and {}.", a, b)),
     }
 }
 
 fn binary_op(
     args: &Vec<MalType>,
-    op: fn(&MalType, &MalType) -> Result<MalType, String>,
-) -> Result<MalType, String> {
+    op: fn(&MalType, &MalType) -> Result<MalType, MalType>,
+) -> Result<MalType, MalType> {
     op(&args[0], &args[1])
 }
 
 fn unary_op(
     args: &Vec<MalType>,
-    op: fn(&MalType) -> Result<MalType, String>,
-) -> Result<MalType, String> {
+    op: fn(&MalType) -> Result<MalType, MalType>,
+) -> Result<MalType, MalType> {
     op(&args[0])
 }
 
@@ -575,8 +564,8 @@ fn join(v: &Vec<MalType>, print_readably: bool, separator: &str) -> String {
         .join(separator)
 }
 
-fn read_file(filename: &str) -> Result<MalType, String> {
+fn read_file(filename: &str) -> Result<MalType, MalType> {
     fs::read_to_string(filename)
         .map(|v| MalType::String(v))
-        .or_else(|err| Err(err.to_string()))
+        .or_else(|err| error(err.to_string()))
 }
